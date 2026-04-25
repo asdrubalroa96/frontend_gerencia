@@ -28,6 +28,7 @@ import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext.jsx';
 import SeniatBrandBlock from './SeniatBrandBlock.jsx';
 import { isEstándaresYAsistenciaTécnicaDivision } from '../utils/divisionUi.js';
+import { getApiBaseUrl } from '../utils/runtimeConfig.js';
 
 const ADMIN_ITEMS = [
   { to: '/admin/plantillas', label: 'Plantillas Word', icon: '📄' },
@@ -220,9 +221,7 @@ export default function ShellLayout() {
     if (!user) {
       return undefined;
     }
-    const apiOrigin =
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || window.location.origin;
-    const socket = io(apiOrigin, {
+    const socket = io(getApiBaseUrl() || window.location.origin, {
       path: '/socket.io',
       withCredentials: true,
       transports: ['websocket', 'polling'],
