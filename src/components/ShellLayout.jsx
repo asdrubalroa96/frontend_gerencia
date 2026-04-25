@@ -220,7 +220,9 @@ export default function ShellLayout() {
     if (!user) {
       return undefined;
     }
-    const socket = io(typeof window !== 'undefined' ? window.location.origin : undefined, {
+    const apiOrigin =
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || window.location.origin;
+    const socket = io(apiOrigin, {
       path: '/socket.io',
       withCredentials: true,
       transports: ['websocket', 'polling'],
