@@ -1,16 +1,61 @@
-# React + Vite
+## Manual de usuario (simple)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Este manual explica, de forma **sencilla**, cómo usar el **Sistema de Gestión Interna**.
 
-Currently, two official plugins are available:
+### 1) Ingresar al sistema
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Abre el enlace del sistema en tu navegador.
+- Escribe tu **correo** y **contraseña**.
+- Presiona **Iniciar sesión**.
 
-## React Compiler
+### 2) Menú principal
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- En el menú verás los módulos disponibles según tu usuario, por ejemplo:
+  - **Inicio**
+  - **Correspondencia**
+  - **Bienes nacionales**
+  - **POA**
+  - **Máquinas fiscales**
+  - **Reenajenación**
 
-## Expanding the ESLint configuration
+### 3) Correspondencia
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- **Enviada**: crea y consulta memos/correspondencias enviadas.
+- **Recibida**: revisa lo que llega a tu bandeja y gestiona según permisos.
+
+### 4) Bienes nacionales
+
+- Registra bienes, actualiza información y usa los filtros para buscar.
+- Puedes exportar listados en **PDF** y **Excel** (según el módulo).
+
+### 5) POA (Plan Operativo Anual)
+
+- **Planificación (Admin)**: crea objetivos y actividades.
+- **Ejecución (Operador)**: registra ejecuciones con su respaldo en PDF.
+- Si una actividad fue marcada como **carga múltiple**, el operador puede subir **un solo PDF resumen** e indicar la **cantidad de tareas** realizadas.
+
+### 6) Máquinas fiscales (Desincorporación / Reenajenación)
+
+- **Desincorporación**:
+  - Registra máquinas.
+  - Marca como **Listo** cuando una máquina o un lote ya está desincorporado.
+- **Reenajenación**:
+  - Trabaja por **máquina individual**.
+  - El **N° de registro** viene por defecto (serial) y no se edita.
+
+### 7) Consejos rápidos
+
+- Si no ves un módulo, es porque tu usuario no tiene permiso.
+- Usa filtros antes de exportar para obtener reportes más precisos.
+
+### Imágenes de referencia
+
+> Imágenes guardadas en `frontend_asdrubal-main/imagen/`.
+
+**Ejemplo de error por redirección (producción mal configurada):**
+
+![Error de redirección](imagen/render_redirect_loop.png)
+
+**Página informativa del backend (cuando no está sirviendo el frontend):**
+
+![Backend informativo](imagen/backend_info_page.png)
