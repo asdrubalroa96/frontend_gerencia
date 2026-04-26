@@ -130,6 +130,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [sent, setSent] = useState([]);
   const [received, setReceived] = useState([]);
+  const [corrByDivision, setCorrByDivision] = useState([]);
   const [assetsSummary, setAssetsSummary] = useState(null);
 
   useEffect(() => {
@@ -147,6 +148,11 @@ export default function HomePage() {
           client.get('/api/correspondence/received/stats').then((r) => ({ key: 'received', data: r.data }))
         );
       }
+      if (!isDivisionStats && user?.role === 'admin') {
+        requests.push(
+          client.get('/api/correspondence/stats/by-division').then((r) => ({ key: 'corrByDivision', data: r.data }))
+        );
+      }
       if (can('assets.read')) {
         requests.push(
           client.get('/api/national-assets/stats/summary').then((r) => ({ key: 'assets', data: r.data }))
@@ -159,6 +165,7 @@ export default function HomePage() {
         const { key, data } = res.value;
         if (key === 'sent') setSent(data);
         if (key === 'received') setReceived(data);
+        if (key === 'corrByDivision') setCorrByDivision(Array.isArray(data) ? data : []);
         if (key === 'assets') setAssetsSummary(data);
       }
       setLoading(false);
@@ -167,7 +174,7 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [can, user?.permissions, user?.divisionId, user?.divisionGlobalScope]);
+  }, [can, user?.permissions, user?.divisionId, user?.divisionGlobalScope, isDivisionStats, user?.role]);
 
   const sentTotal = useMemo(() => sent.reduce((a, r) => a + (Number(r.total) || 0), 0), [sent]);
   const receivedTotal = useMemo(() => received.reduce((a, r) => a + (Number(r.total) || 0), 0), [received]);
@@ -225,6 +232,23 @@ export default function HomePage() {
       })),
     [received]
   );
+
+  const corrByDivisionBar = useMemo(() => {
+    const list = Array.isArray(corrByDivision) ? corrByDivision : [];
+    // Evitar barras gigantes: truncar etiqueta, conservar full en tooltip
+    return list
+      .filter((r) => r && r.division_name)
+      .map((r) => {
+        const full = String(r.division_name || '');
+        return {
+          fullName: full,
+          name: full.length > 18 ? `${full.slice(0, 18)}…` : full,
+          sent: Number(r.sent_total) || 0,
+          received: Number(r.received_total) || 0,
+        };
+      })
+      .filter((r) => r.sent > 0 || r.received > 0);
+  }, [corrByDivision]);
 
   const assetsByTypeData = useMemo(
     () =>
@@ -477,6 +501,30 @@ export default function HomePage() {
                       <Cell key={i} fill={CHART_COLORS[(i + 2) % CHART_COLORS.length]} />
                     ))}
                   </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </ChartCard>
+        ) : null}
+
+        {!isDivisionStats && user?.role === 'admin' && corrByDivisionBar.length > 0 ? (
+          <ChartCard
+            title="Enviada vs recibida por división"
+            subtitle="Barras agrupadas: totales institucionales por división (Admin)"
+            minH="320px"
+          >
+            <Box h="260px">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={corrByDivisionBar} margin={{ top: 8, right: 8, left: 4, bottom: 8 }} barGap={6}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-18} textAnchor="end" height={70} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    formatter={(value, name) => [`${value}`, name === 'sent' ? 'Enviada' : 'Recibida']}
+                    labelFormatter={(label, payload) => payload?.[0]?.payload?.fullName || label}
+                  />
+                  <Bar dataKey="sent" name="Enviada" fill="#C53030" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                  <Bar dataKey="received" name="Recibida" fill="#2B6CB0" radius={[6, 6, 0, 0]} maxBarSize={36} />
                 </BarChart>
               </ResponsiveContainer>
             </Box>

@@ -39,6 +39,7 @@ import CorrespondenceStatsCharts from '../components/CorrespondenceStatsCharts.j
 import ExportMenuButton from '../components/ExportMenuButton.jsx';
 import { managementBadgeProps, managementRowBg } from '../utils/managementVisuals.js';
 import { isScopedDivisionUser } from '../utils/divisionUi.js';
+import { uploadUrl } from '../utils/uploadUrl.js';
 
 /** Filtros y listados: incluye todos los estados. */
 const managementFilterOptions = [
@@ -242,7 +243,7 @@ export default function CorrespondenceSentPage() {
     };
   }, [isOpen, editing, form.sentDate]);
 
-  const pdfUrl = (path) => (path ? `/uploads/${path}` : null);
+  const pdfUrl = (path) => uploadUrl(path);
 
   const downloadBlob = (blob, filename) => {
     const url = window.URL.createObjectURL(blob);

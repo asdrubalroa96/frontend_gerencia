@@ -34,6 +34,7 @@ import CorrespondenceStatsCharts from '../components/CorrespondenceStatsCharts.j
 import ExportMenuButton from '../components/ExportMenuButton.jsx';
 import { managementBadgeProps, managementRowBg } from '../utils/managementVisuals.js';
 import { isScopedDivisionUser } from '../utils/divisionUi.js';
+import { uploadUrl } from '../utils/uploadUrl.js';
 
 const managementOptions = [
   { value: 'informativo', label: 'Informativo' },
@@ -140,7 +141,7 @@ export default function CorrespondenceReceivedPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pdfUrl = (path) => (path ? `/uploads/${path}` : null);
+  const pdfUrl = (path) => uploadUrl(path);
 
   const downloadBlob = (blob, filename) => {
     const url = window.URL.createObjectURL(blob);
@@ -476,8 +477,8 @@ export default function CorrespondenceReceivedPage() {
         </HStack>
       </Box>
 
-      <Box bg="white" borderRadius="md" boxShadow="sm" overflowX="auto">
-        <Table size="sm">
+      <Box bg="white" borderRadius="md" boxShadow="sm" overflowX="auto" sx={{ WebkitOverflowScrolling: 'touch' }}>
+        <Table size="sm" sx={{ tableLayout: 'fixed', minWidth: '980px' }}>
           <Thead>
             <Tr>
               <Th>N°</Th>
@@ -502,14 +503,20 @@ export default function CorrespondenceReceivedPage() {
                   </Badge>
                 </Td>
                 <Td>{r.received_date?.slice(0, 10)}</Td>
-                <Td maxW="200px" whiteSpace="normal">
-                  {r.sender}
+                <Td maxW={0} title={r.sender || ''}>
+                  <ChakraText noOfLines={1} fontSize="sm">
+                    {r.sender}
+                  </ChakraText>
                 </Td>
-                <Td maxW="220px" whiteSpace="normal">
-                  {r.subject}
+                <Td maxW={0} title={r.subject || ''}>
+                  <ChakraText noOfLines={1} fontSize="sm">
+                    {r.subject}
+                  </ChakraText>
                 </Td>
-                <Td fontSize="xs" maxW="180px" whiteSpace="normal">
-                  {r.division_name || '—'}
+                <Td fontSize="xs" maxW={0} title={r.division_name || ''}>
+                  <ChakraText noOfLines={1} fontSize="xs">
+                    {r.division_name || '—'}
+                  </ChakraText>
                 </Td>
                 <Td>
                   <Badge {...managementBadgeProps(r.management)}>{r.management}</Badge>

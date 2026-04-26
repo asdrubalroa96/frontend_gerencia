@@ -49,6 +49,7 @@ import {
 import client from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { isScopedDivisionUser } from '../utils/divisionUi.js';
+import { uploadUrl } from '../utils/uploadUrl.js';
 
 const CHART_PALETTE = ['#9B2C2C', '#C53030', '#E53E3E', '#FC8181', '#742A2A', '#822727', '#4A5568', '#D69E2E', '#744210'];
 
@@ -224,7 +225,7 @@ export default function NationalAssetsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const photoUrl = (path) => (path ? `/uploads/${path}` : null);
+  const photoUrl = (path) => uploadUrl(path);
 
   const openPhotoPreview = (row) => {
     if (!row.photo_path) return;
