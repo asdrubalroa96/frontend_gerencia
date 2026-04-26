@@ -36,6 +36,7 @@ import { useEffect, useMemo, useState } from 'react';
 import client from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import CorrespondenceStatsCharts from '../components/CorrespondenceStatsCharts.jsx';
+import CorrespondenceDivisionBars from '../components/CorrespondenceDivisionBars.jsx';
 import ExportMenuButton from '../components/ExportMenuButton.jsx';
 import { managementBadgeProps, managementRowBg } from '../utils/managementVisuals.js';
 import { isScopedDivisionUser } from '../utils/divisionUi.js';
@@ -475,6 +476,8 @@ export default function CorrespondenceSentPage() {
         title="Gráficos — correspondencia enviada"
         subtitle="Basados en el listado visible (filtros de gestión, destino y fechas). Alta y edición requieren PDF."
       />
+
+      {!isDivisionOnly && user?.role === 'admin' ? <CorrespondenceDivisionBars /> : null}
 
       <Box bg="white" p={4} borderRadius="md" boxShadow="sm" mb={4}>
         <ChakraText fontWeight="600" mb={2}>
