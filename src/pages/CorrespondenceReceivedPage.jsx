@@ -112,6 +112,72 @@ export default function CorrespondenceReceivedPage() {
     return list.filter((d) => String(d.name || '').toLowerCase().trim() !== 'despacho');
   }, [catalog?.divisions]);
 
+  const despachoDivisionId = useMemo(() => {
+    const d = (catalog?.divisions || []).find(
+      (x) => String(x.name || '').toLowerCase().trim() === 'despacho'
+    );
+    return d ? Number(d.id) : null;
+  }, [catalog?.divisions]);
+
+  /** División receptora del ítem: solo personal de esa división puede asignarse. */
+  const assigneesDivisionIdResolved = useMemo(() => {
+    if (editing?.entry_type === 'routed_memo') {
+      const destId = Number(routedForm.destinationId);
+      if (Number.isFinite(destId) && destId > 0) {
+        const dest = (catalog.destinations || []).find((x) => Number(x.id) === destId);
+        if (dest) {
+          if (dest.division_id != null && Number.isFinite(Number(dest.division_id))) {
+            return Number(dest.division_id);
+          }
+          return despachoDivisionId;
+        }
+      }
+      if (editing.division_id != null && Number.isFinite(Number(editing.division_id))) {
+        return Number(editing.division_id);
+      }
+      return despachoDivisionId;
+    }
+    if (!editing) {
+      return despachoDivisionId;
+    }
+    if (editing.division_id != null && Number.isFinite(Number(editing.division_id))) {
+      return Number(editing.division_id);
+    }
+    return despachoDivisionId;
+  }, [editing, routedForm.destinationId, catalog.destinations, despachoDivisionId]);
+
+  const assigneesForSelect = useMemo(() => {
+    const list = [...(catalog.assignees || [])];
+    const rawId =
+      editing?.entry_type === 'routed_memo' ? routedForm.assignedUserId : form.assignedUserId;
+    const sid = rawId != null && String(rawId).trim() !== '' ? String(rawId) : '';
+    if (sid && !list.some((u) => String(u.id) === sid)) {
+      list.unshift({
+        id: sid,
+        name: editing?.assigned_name ? `${editing.assigned_name} (actual)` : 'Asignado actual',
+      });
+    }
+    return list;
+  }, [catalog.assignees, editing, form.assignedUserId, routedForm.assignedUserId]);
+
+  useEffect(() => {
+    if (!isOpen || authLoading) return;
+    const id = assigneesDivisionIdResolved;
+    if (id == null || !Number.isFinite(id)) return;
+    let cancelled = false;
+    client
+      .get('/api/catalogs', { params: { assigneesDivisionId: id } })
+      .then((res) => {
+        if (!cancelled) {
+          setCatalog((prev) => ({ ...prev, assignees: res.data.assignees || [] }));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, authLoading, assigneesDivisionIdResolved]);
+
   const chartStats = useMemo(() => {
     const map = new Map();
     for (const r of rows) {
@@ -757,7 +823,7 @@ export default function CorrespondenceReceivedPage() {
                     value={routedForm.assignedUserId}
                     onChange={(e) => setRoutedForm((f) => ({ ...f, assignedUserId: e.target.value }))}
                   >
-                    {catalog.assignees.map((u) => (
+                    {assigneesForSelect.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}
                       </option>
@@ -809,7 +875,7 @@ export default function CorrespondenceReceivedPage() {
                     value={form.assignedUserId}
                     onChange={(e) => setForm((f) => ({ ...f, assignedUserId: e.target.value }))}
                   >
-                    {catalog.assignees.map((u) => (
+                    {assigneesForSelect.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}
                       </option>
