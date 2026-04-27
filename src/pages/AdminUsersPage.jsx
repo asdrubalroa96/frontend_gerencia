@@ -1,4 +1,5 @@
 import {
+  Badge,
   Box,
   Button,
   FormControl,
@@ -6,15 +7,24 @@ import {
   Heading,
   HStack,
   Input,
+  Modal,
+  ModalBody,
+  ModalCloseButton,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay,
   Select,
   Switch,
   Table,
+  TableContainer,
   Tbody,
   Td,
   Text as ChakraText,
   Th,
   Thead,
   Tr,
+  useDisclosure,
   useToast,
   VStack,
 } from '@chakra-ui/react';
@@ -25,9 +35,25 @@ import { useAuth } from '../context/AuthContext.jsx';
 /**
  * Administración de cuentas internas y roles (solo perfil admin).
  */
+function roleLabel(code) {
+  const c = String(code || '').toLowerCase();
+  if (c === 'admin') return 'Administrador';
+  if (c === 'consulta') return 'Consulta';
+  if (c === 'operador') return 'Operador';
+  return code || '—';
+}
+
 export default function AdminUsersPage() {
   const toast = useToast();
-  const { user: authUser } = useAuth();
+  const { user: authUser, isAdmin } = useAuth();
+  const { isOpen: manageModalOpen, onOpen: onManageModalOpen, onClose: onManageModalCloseRaw } = useDisclosure();
+  const closeManageModal = () => {
+    setManageModalUser(null);
+    onManageModalCloseRaw();
+  };
+  const [manageModalUser, setManageModalUser] = useState(null);
+  const [manageRoleChoice, setManageRoleChoice] = useState('operador');
+  const [manageActive, setManageActive] = useState(true);
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [form, setForm] = useState({
@@ -56,26 +82,31 @@ export default function AdminUsersPage() {
     await load();
   };
 
-  const setUserRole = async (u, roleCode) => {
-    if (u.role_code === 'admin') return;
-    try {
-      await patchUser(u.id, { roleCode });
-    } catch (err) {
-      toast({
-        title: 'Error',
-        description: err.response?.data?.error || err.message,
-        status: 'error',
-      });
-    }
+  const openManageModal = (u) => {
+    if (!isAdmin || !u?.id || u.id === authUser?.id) return;
+    setManageModalUser(u);
+    setManageRoleChoice(u.role_code === 'consulta' ? 'consulta' : 'operador');
+    setManageActive(Boolean(u.active));
+    onManageModalOpen();
   };
 
-  const setUserActive = async (u, active) => {
-    if (!active && u.id === authUser?.id) {
-      toast({ title: 'No puede restringir su propia cuenta', status: 'warning' });
+  const saveManageModal = async () => {
+    if (!manageModalUser) return;
+    const payload = {};
+    if (manageModalUser.role_code !== 'admin' && manageRoleChoice !== manageModalUser.role_code) {
+      payload.roleCode = manageRoleChoice;
+    }
+    if (manageActive !== Boolean(manageModalUser.active)) {
+      payload.active = manageActive;
+    }
+    if (!Object.keys(payload).length) {
+      toast({ title: 'Sin cambios', status: 'info' });
+      closeManageModal();
       return;
     }
     try {
-      await patchUser(u.id, { active });
+      await patchUser(manageModalUser.id, payload);
+      closeManageModal();
     } catch (err) {
       toast({
         title: 'Error',
@@ -125,9 +156,10 @@ export default function AdminUsersPage() {
         Usuarios y roles
       </Heading>
       <ChakraText fontSize="sm" color="gray.600" mb={4}>
-        Puede <strong>restringir el acceso</strong> desactivando la cuenta (el usuario no podrá iniciar sesión) y asignar el
-        perfil <strong>Operador</strong> (gestión completa) o <strong>Consulta</strong> (solo lectura según permisos del
-        sistema). El perfil administrador no se modifica desde esta tabla.
+        Use <strong>Gestionar</strong> en cada fila para cambiar el rol (operador / consulta) y para{' '}
+        <strong>activar o inactivar</strong> la cuenta. Un usuario inactivo no podrá iniciar sesión. No puede gestionar su
+        propia fila desde aquí. El rol administrador no se cambia desde este formulario, pero sí puede inactivarse otra
+        cuenta admin si hace falta.
       </ChakraText>
 
       <Box bg="white" p={4} borderRadius="md" boxShadow="sm" mb={6}>
@@ -182,15 +214,15 @@ export default function AdminUsersPage() {
         </VStack>
       </Box>
 
-      <Box bg="white" borderRadius="md" boxShadow="sm" overflowX="auto">
-        <Table size="sm">
+      <TableContainer bg="white" borderRadius="md" boxShadow="sm" overflowX="auto">
+        <Table size="sm" variant="simple">
           <Thead>
             <Tr>
-              <Th>Correo</Th>
-              <Th>Nombre</Th>
-              <Th>Perfil (operador / consulta)</Th>
-              <Th>División</Th>
-              <Th>Acceso</Th>
+              <Th textTransform="none">Correo</Th>
+              <Th textTransform="none">Nombre</Th>
+              <Th textTransform="none">Rol</Th>
+              <Th textTransform="none">División</Th>
+              <Th textTransform="none">Activo</Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -199,38 +231,81 @@ export default function AdminUsersPage() {
                 <Td>{u.email}</Td>
                 <Td>{u.full_name}</Td>
                 <Td>
-                  {u.role_code === 'admin' ? (
-                    <ChakraText fontSize="sm">Administrador</ChakraText>
-                  ) : (
-                    <Select
-                      size="sm"
-                      maxW="200px"
-                      value={u.role_code === 'consulta' ? 'consulta' : 'operador'}
-                      onChange={(e) => setUserRole(u, e.target.value)}
-                    >
-                      <option value="operador">Operador (gestión)</option>
-                      <option value="consulta">Consulta (solo lectura)</option>
-                    </Select>
-                  )}
+                  <HStack spacing={2} flexWrap="wrap">
+                    <Badge colorScheme={u.role_code === 'admin' ? 'purple' : u.role_code === 'consulta' ? 'cyan' : 'blue'}>
+                      {roleLabel(u.role_code)}
+                    </Badge>
+                    {isAdmin && u.id !== authUser?.id ? (
+                      <Button size="xs" variant="outline" colorScheme="brand" onClick={() => openManageModal(u)}>
+                        Gestionar
+                      </Button>
+                    ) : isAdmin && u.id === authUser?.id ? (
+                      <ChakraText fontSize="xs" color="gray.500">
+                        (su cuenta)
+                      </ChakraText>
+                    ) : null}
+                  </HStack>
                 </Td>
                 <Td>{u.division_name || '—'}</Td>
                 <Td>
-                  <HStack spacing={2}>
-                    <Switch
-                      isChecked={u.active}
-                      onChange={(e) => setUserActive(u, e.target.checked)}
-                      title="Desactivar para restringir el acceso al sistema"
-                    />
-                    <ChakraText fontSize="xs" color="gray.600">
-                      {u.active ? 'Permitido' : 'Restringido'}
-                    </ChakraText>
-                  </HStack>
+                  <ChakraText fontSize="sm">{u.active ? 'Sí' : 'No'}</ChakraText>
                 </Td>
               </Tr>
             ))}
           </Tbody>
         </Table>
-      </Box>
+      </TableContainer>
+
+      <Modal isOpen={manageModalOpen} onClose={closeManageModal} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Gestionar usuario</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <ChakraText fontSize="sm" mb={4}>
+              <strong>{manageModalUser?.full_name}</strong> ({manageModalUser?.email})
+            </ChakraText>
+            {manageModalUser?.role_code === 'admin' ? (
+              <ChakraText fontSize="sm" color="gray.600" mb={4}>
+                Rol: <strong>Administrador</strong> (no se modifica aquí).
+              </ChakraText>
+            ) : (
+              <FormControl mb={4}>
+                <FormLabel>Rol</FormLabel>
+                <Select value={manageRoleChoice} onChange={(e) => setManageRoleChoice(e.target.value)}>
+                  <option value="operador">Operador — gestión y consultas operativas</option>
+                  <option value="consulta">Consulta — solo lectura (según permisos del sistema)</option>
+                </Select>
+              </FormControl>
+            )}
+            <FormControl display="flex" alignItems="center" justifyContent="space-between">
+              <Box>
+                <FormLabel mb={0}>Cuenta activa</FormLabel>
+                <ChakraText fontSize="xs" color="gray.500">
+                  Si está desactivada, el usuario no podrá entrar al sistema.
+                </ChakraText>
+              </Box>
+              <Switch
+                isChecked={manageActive}
+                onChange={(e) => setManageActive(e.target.checked)}
+                colorScheme="green"
+                size="lg"
+              />
+            </FormControl>
+            <ChakraText fontSize="xs" color="gray.600" mt={3}>
+              Estado actual en base de datos: {manageModalUser?.active ? 'Activo' : 'Inactivo'}
+            </ChakraText>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={closeManageModal}>
+              Cancelar
+            </Button>
+            <Button colorScheme="brand" onClick={() => saveManageModal()}>
+              Guardar cambios
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Box>
   );
 }

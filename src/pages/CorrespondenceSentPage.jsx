@@ -118,7 +118,6 @@ export default function CorrespondenceSentPage() {
     destinationId: '',
     subject: '',
     management: 'por_gestionar',
-    assignedUserId: '',
     pdf: null,
   });
   const [editing, setEditing] = useState(null);
@@ -292,7 +291,6 @@ export default function CorrespondenceSentPage() {
       destinationId: '',
       subject: '',
       management: 'por_gestionar',
-      assignedUserId: '',
       pdf: null,
     });
     onOpen();
@@ -325,7 +323,6 @@ export default function CorrespondenceSentPage() {
       destinationId: String(row.destination_id),
       subject: row.subject,
       management: row.management,
-      assignedUserId: row.assigned_user_id || '',
       pdf: null,
     });
     onOpen();
@@ -378,7 +375,6 @@ export default function CorrespondenceSentPage() {
       }
       fd.append('subject', form.subject);
       fd.append('management', form.management);
-      if (form.assignedUserId) fd.append('assignedUserId', form.assignedUserId);
       if (form.pdf) fd.append('pdf', form.pdf);
 
       if (!editing) {
@@ -395,7 +391,6 @@ export default function CorrespondenceSentPage() {
           const body = {
             sentDate: form.sentDate,
             subject: form.subject,
-            assignedUserId: form.assignedUserId || null,
           };
           if (useManual) {
             body.customDestinationName = customDestinationName.trim();
@@ -639,7 +634,7 @@ export default function CorrespondenceSentPage() {
                   px={2}
                   lineHeight="1.1"
                 >
-                  Asignado
+                  Asignado en destino
                 </Th>
                 <Th
                   fontSize="xs"
@@ -921,8 +916,9 @@ export default function CorrespondenceSentPage() {
                 <FormLabel>Gestión</FormLabel>
                 {editing?.management === 'concluido' ? (
                   <ChakraText fontSize="sm" color="gray.600">
-                    Este memo está <strong>concluido</strong>. Puede actualizar fecha, destino, asunto, asignación o PDF; el
-                    estado seguirá siendo concluido.
+                    Este memo está <strong>concluido</strong>. Puede actualizar fecha, destino, asunto o PDF; el estado
+                    seguirá siendo concluido. La asignación a una persona se hace en <strong>Correspondencia recibida</strong>{' '}
+                    en la división de destino.
                   </ChakraText>
                 ) : (
                   <>
@@ -942,20 +938,6 @@ export default function CorrespondenceSentPage() {
                     </Select>
                   </>
                 )}
-              </FormControl>
-              <FormControl>
-                <FormLabel>Asignado</FormLabel>
-                <Select
-                  placeholder="Sin asignar"
-                  value={form.assignedUserId}
-                  onChange={(e) => setForm((f) => ({ ...f, assignedUserId: e.target.value }))}
-                >
-                  {catalog.assignees.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </Select>
               </FormControl>
               <FormControl isRequired>
                 <FormLabel>Adjunto PDF</FormLabel>

@@ -48,7 +48,7 @@ const managementOptions = [
  */
 export default function CorrespondenceReceivedPage() {
   const toast = useToast();
-  const { user, can } = useAuth();
+  const { user, can, loading: authLoading } = useAuth();
   const canWriteRecv = can('corr_recv.write');
   const isDivisionOnly = isScopedDivisionUser(user);
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -75,8 +75,8 @@ export default function CorrespondenceReceivedPage() {
     to: '',
     sender: '',
   });
-  /** all | pending | received — memos internos nuevos van a «por recibir» hasta confirmar. */
-  const [receiptTab, setReceiptTab] = useState('all');
+  /** all | pending | received — bandeja temporal (por recibir) hasta confirmar; luego recibidos. */
+  const [receiptTab, setReceiptTab] = useState('received');
   const [form, setForm] = useState({
     receivedDate: '',
     sender: '',
@@ -132,7 +132,7 @@ export default function CorrespondenceReceivedPage() {
     if (tab && tab !== 'all') params.receiptStatus = tab;
     const [listRes, statsRes, catRes, destRes] = await Promise.all([
       client.get('/api/correspondence/received', { params }),
-      client.get('/api/correspondence/received/stats'),
+      client.get('/api/correspondence/received/stats', { params }),
       client.get('/api/catalogs'),
       client.get('/api/correspondence/destinations-for-sent').catch(() => ({ data: [] })),
     ]);
@@ -143,9 +143,12 @@ export default function CorrespondenceReceivedPage() {
   };
 
   useEffect(() => {
-    load().catch(() => {});
+    if (authLoading) return;
+    const tab = isDivisionOnly ? 'pending' : 'received';
+    setReceiptTab(tab);
+    load(undefined, tab).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authLoading, isDivisionOnly]);
 
   const pdfUrl = (path) => uploadUrl(path);
 
@@ -167,6 +170,7 @@ export default function CorrespondenceReceivedPage() {
       if (filters.from) params.from = filters.from;
       if (filters.to) params.to = filters.to;
       if (filters.sender) params.sender = filters.sender;
+      if (receiptTab && receiptTab !== 'all') params.receiptStatus = receiptTab;
       const res = await client.get('/api/reports/correspondence-received.pdf', { params, responseType: 'blob' });
       downloadBlob(res.data, 'correspondencia_recibida.pdf');
     } catch (err) {
@@ -428,10 +432,11 @@ export default function CorrespondenceReceivedPage() {
       {isDivisionOnly ? (
         <Box mb={4} p={3} bg="blue.50" borderRadius="md" borderWidth="1px" borderColor="blue.100">
           <ChakraText fontSize="sm" color="gray.700">
-            <strong>Su división:</strong> {user?.divisionName || '—'}.             Aquí figuran los <strong>memos internos</strong> dirigidos a su división y, si aplica, el correo del exterior
-            que el Despacho haya asociado a su división. El listado sigue el <strong>orden de registro en el sistema</strong>{' '}
-            (recepción), no la fecha del memo. No puede dar de alta correspondencia recibida desde aquí; use la sección{' '}
-            <strong>Correspondencia enviada</strong> para memos salientes.
+            <strong>Su división:</strong> {user?.divisionName || '—'}. Los <strong>memos internos</strong> nuevos entran en la{' '}
+            <strong>bandeja temporal (por recibir)</strong> hasta que confirme la recepción; allí puede asignarlos a una persona
+            de su división. Luego pasan a <strong>Recibidos</strong>. También verá el exterior que el Despacho haya asociado a su
+            unidad. El N° de bandeja es consecutivo por orden de registro. No puede dar de alta memos salientes aquí; use{' '}
+            <strong>Correspondencia enviada</strong>.
           </ChakraText>
         </Box>
       ) : (
@@ -441,14 +446,16 @@ export default function CorrespondenceReceivedPage() {
             obligatorio</strong>). Para reenviarla a una división operativa sin duplicar el registro como memo enviado,
             use <strong>Derivar a división</strong> en la columna Asignado (una sola vez por registro); el ítem{' '}
             <strong>sigue visible aquí</strong> además de en la división. Los <strong>memos internos</strong> siguen
-            gestionándose desde <strong>Correspondencia enviada</strong>.
+            gestionándose desde <strong>Correspondencia enviada</strong>. Los memos dirigidos al Despacho entran primero en la{' '}
+            <strong>bandeja temporal (por recibir)</strong> hasta confirmar recepción; use <strong>Recibidos</strong> para ver el
+            conjunto ya confirmado y el correo del exterior.
           </ChakraText>
         </Box>
       )}
 
       <HStack spacing={2} mb={4} flexWrap="wrap">
         <ChakraText fontSize="sm" fontWeight="600" w="100%">
-          Bandeja de memos internos
+          Memos internos: bandeja temporal y recibidos
         </ChakraText>
         <Button
           size="sm"
@@ -459,7 +466,7 @@ export default function CorrespondenceReceivedPage() {
             load(undefined, 'pending').catch(() => {});
           }}
         >
-          Por recibir
+          Bandeja temporal (por recibir)
         </Button>
         <Button
           size="sm"
