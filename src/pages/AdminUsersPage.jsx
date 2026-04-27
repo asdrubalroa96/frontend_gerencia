@@ -4,8 +4,10 @@ import {
   FormControl,
   FormLabel,
   Heading,
+  HStack,
   Input,
   Select,
+  Switch,
   Table,
   Tbody,
   Td,
@@ -18,12 +20,14 @@ import {
 } from '@chakra-ui/react';
 import { useEffect, useState } from 'react';
 import client from '../api/client.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 /**
  * Administración de cuentas internas y roles (solo perfil admin).
  */
 export default function AdminUsersPage() {
   const toast = useToast();
+  const { user: authUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [form, setForm] = useState({
@@ -44,6 +48,41 @@ export default function AdminUsersPage() {
     setUsers(u.data);
     setRoles(r.data);
     setDivisions(cat.data.divisions || []);
+  };
+
+  const patchUser = async (id, payload) => {
+    await client.patch(`/api/users/${id}`, payload);
+    toast({ title: 'Cambios guardados', status: 'success' });
+    await load();
+  };
+
+  const setUserRole = async (u, roleCode) => {
+    if (u.role_code === 'admin') return;
+    try {
+      await patchUser(u.id, { roleCode });
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err.response?.data?.error || err.message,
+        status: 'error',
+      });
+    }
+  };
+
+  const setUserActive = async (u, active) => {
+    if (!active && u.id === authUser?.id) {
+      toast({ title: 'No puede restringir su propia cuenta', status: 'warning' });
+      return;
+    }
+    try {
+      await patchUser(u.id, { active });
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err.response?.data?.error || err.message,
+        status: 'error',
+      });
+    }
   };
 
   useEffect(() => {
@@ -85,6 +124,11 @@ export default function AdminUsersPage() {
       <Heading size="md" mb={4}>
         Usuarios y roles
       </Heading>
+      <ChakraText fontSize="sm" color="gray.600" mb={4}>
+        Puede <strong>restringir el acceso</strong> desactivando la cuenta (el usuario no podrá iniciar sesión) y asignar el
+        perfil <strong>Operador</strong> (gestión completa) o <strong>Consulta</strong> (solo lectura según permisos del
+        sistema). El perfil administrador no se modifica desde esta tabla.
+      </ChakraText>
 
       <Box bg="white" p={4} borderRadius="md" boxShadow="sm" mb={6}>
         <ChakraText fontWeight="600" mb={3}>
@@ -144,9 +188,9 @@ export default function AdminUsersPage() {
             <Tr>
               <Th>Correo</Th>
               <Th>Nombre</Th>
-              <Th>Rol</Th>
+              <Th>Perfil (operador / consulta)</Th>
               <Th>División</Th>
-              <Th>Activo</Th>
+              <Th>Acceso</Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -154,9 +198,34 @@ export default function AdminUsersPage() {
               <Tr key={u.id}>
                 <Td>{u.email}</Td>
                 <Td>{u.full_name}</Td>
-                <Td>{u.role_code}</Td>
+                <Td>
+                  {u.role_code === 'admin' ? (
+                    <ChakraText fontSize="sm">Administrador</ChakraText>
+                  ) : (
+                    <Select
+                      size="sm"
+                      maxW="200px"
+                      value={u.role_code === 'consulta' ? 'consulta' : 'operador'}
+                      onChange={(e) => setUserRole(u, e.target.value)}
+                    >
+                      <option value="operador">Operador (gestión)</option>
+                      <option value="consulta">Consulta (solo lectura)</option>
+                    </Select>
+                  )}
+                </Td>
                 <Td>{u.division_name || '—'}</Td>
-                <Td>{u.active ? 'Sí' : 'No'}</Td>
+                <Td>
+                  <HStack spacing={2}>
+                    <Switch
+                      isChecked={u.active}
+                      onChange={(e) => setUserActive(u, e.target.checked)}
+                      title="Desactivar para restringir el acceso al sistema"
+                    />
+                    <ChakraText fontSize="xs" color="gray.600">
+                      {u.active ? 'Permitido' : 'Restringido'}
+                    </ChakraText>
+                  </HStack>
+                </Td>
               </Tr>
             ))}
           </Tbody>

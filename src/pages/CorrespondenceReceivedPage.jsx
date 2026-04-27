@@ -48,7 +48,8 @@ const managementOptions = [
  */
 export default function CorrespondenceReceivedPage() {
   const toast = useToast();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
+  const canWriteRecv = can('corr_recv.write');
   const isDivisionOnly = isScopedDivisionUser(user);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const {
@@ -74,6 +75,8 @@ export default function CorrespondenceReceivedPage() {
     to: '',
     sender: '',
   });
+  /** all | pending | received — memos internos nuevos van a «por recibir» hasta confirmar. */
+  const [receiptTab, setReceiptTab] = useState('all');
   const [form, setForm] = useState({
     receivedDate: '',
     sender: '',
@@ -118,13 +121,15 @@ export default function CorrespondenceReceivedPage() {
     return Array.from(map.entries()).map(([management, total]) => ({ management, total }));
   }, [rows]);
 
-  const load = async (overrideFilters) => {
+  const load = async (overrideFilters, tabOverride) => {
     const f = overrideFilters ?? filters;
+    const tab = tabOverride ?? receiptTab;
     const params = {};
     if (f.management) params.management = f.management;
     if (f.from) params.from = f.from;
     if (f.to) params.to = f.to;
     if (f.sender) params.sender = f.sender;
+    if (tab && tab !== 'all') params.receiptStatus = tab;
     const [listRes, statsRes, catRes, destRes] = await Promise.all([
       client.get('/api/correspondence/received', { params }),
       client.get('/api/correspondence/received/stats'),
@@ -296,7 +301,32 @@ export default function CorrespondenceReceivedPage() {
         }
       }
       onClose();
-      await load();
+      await load(undefined, receiptTab);
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err.response?.data?.error || err.message,
+        status: 'error',
+      });
+    }
+  };
+
+  const markMemoReceived = async (row) => {
+    if (row.entry_type !== 'routed_memo' || !row.sent_id) return;
+    try {
+      const body = { sentId: row.sent_id };
+      if (user?.role === 'admin') {
+        body.inboxDivisionId =
+          row.division_id === null || row.division_id === undefined || row.division_id === ''
+            ? null
+            : Number(row.division_id);
+      }
+      const { data } = await client.post('/api/correspondence/received/acknowledge-memo', body);
+      toast({
+        title: data.already ? 'Ya estaba recibida' : 'Marcada como recibida',
+        status: 'success',
+      });
+      await load(undefined, receiptTab);
     } catch (err) {
       toast({
         title: 'Error',
@@ -314,7 +344,7 @@ export default function CorrespondenceReceivedPage() {
         await client.patch(`/api/correspondence/received/${row.received_id}`, { management: 'concluido' });
       }
       toast({ title: 'Marcado como concluido', status: 'success' });
-      await load();
+      await load(undefined, receiptTab);
     } catch (err) {
       toast({
         title: 'Error',
@@ -351,7 +381,7 @@ export default function CorrespondenceReceivedPage() {
       onRouteClose();
       setRouteTargetRow(null);
       setRouteDivisionId('');
-      await load();
+      await load(undefined, receiptTab);
     } catch (err) {
       toast({
         title: 'Error',
@@ -367,7 +397,7 @@ export default function CorrespondenceReceivedPage() {
     try {
       await client.patch(`/api/correspondence/received/${row.received_id}`, { divisionId: null });
       toast({ title: 'Derivación reversada', status: 'success' });
-      await load();
+      await load(undefined, receiptTab);
     } catch (err) {
       toast({
         title: 'Error',
@@ -416,6 +446,44 @@ export default function CorrespondenceReceivedPage() {
         </Box>
       )}
 
+      <HStack spacing={2} mb={4} flexWrap="wrap">
+        <ChakraText fontSize="sm" fontWeight="600" w="100%">
+          Bandeja de memos internos
+        </ChakraText>
+        <Button
+          size="sm"
+          variant={receiptTab === 'pending' ? 'solid' : 'outline'}
+          colorScheme="orange"
+          onClick={() => {
+            setReceiptTab('pending');
+            load(undefined, 'pending').catch(() => {});
+          }}
+        >
+          Por recibir
+        </Button>
+        <Button
+          size="sm"
+          variant={receiptTab === 'received' ? 'solid' : 'outline'}
+          colorScheme="green"
+          onClick={() => {
+            setReceiptTab('received');
+            load(undefined, 'received').catch(() => {});
+          }}
+        >
+          Recibidos
+        </Button>
+        <Button
+          size="sm"
+          variant={receiptTab === 'all' ? 'solid' : 'outline'}
+          onClick={() => {
+            setReceiptTab('all');
+            load(undefined, 'all').catch(() => {});
+          }}
+        >
+          Todos
+        </Button>
+      </HStack>
+
       <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3} mb={4}>
         {stats.map((s) => (
           <Box key={s.management} p={3} bg="white" borderRadius="md" boxShadow="sm">
@@ -462,7 +530,13 @@ export default function CorrespondenceReceivedPage() {
           />
           <Input type="date" value={filters.from} onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))} />
           <Input type="date" value={filters.to} onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))} />
-          <Button onClick={() => load()}>Aplicar</Button>
+          <Button
+            onClick={() => {
+              load(undefined, receiptTab).catch(() => {});
+            }}
+          >
+            Aplicar
+          </Button>
           <ExportMenuButton
             label="Exportaciones"
             options={[{ id: 'recv_pdf', label: 'Listado (PDF)', onClick: exportReceivedPdf }]}
@@ -472,7 +546,7 @@ export default function CorrespondenceReceivedPage() {
             onClick={async () => {
               const cleared = { management: '', from: '', to: '', sender: '' };
               setFilters(cleared);
-              await load(cleared);
+              await load(cleared, receiptTab);
             }}
           >
             Limpiar
@@ -569,8 +643,16 @@ export default function CorrespondenceReceivedPage() {
                       Solo lectura (exterior sin gestión para su división)
                     </ChakraText>
                   ) : (
-                    <HStack spacing={1}>
-                      {r.management === 'por_gestionar' && (
+                    <HStack spacing={1} flexWrap="wrap">
+                      {canWriteRecv &&
+                        r.entry_type === 'routed_memo' &&
+                        r.requires_receipt === true &&
+                        !r.acknowledged_at && (
+                          <Button size="xs" colorScheme="teal" variant="solid" onClick={() => markMemoReceived(r)}>
+                            Marcar como recibida
+                          </Button>
+                        )}
+                      {canWriteRecv && r.management === 'por_gestionar' && (
                         <Button
                           size="xs"
                           colorScheme="blue"
@@ -586,9 +668,11 @@ export default function CorrespondenceReceivedPage() {
                           Concluir
                         </Button>
                       )}
-                      <Button size="xs" onClick={() => openEdit(r)}>
-                        Editar
-                      </Button>
+                      {canWriteRecv ? (
+                        <Button size="xs" onClick={() => openEdit(r)}>
+                          Editar
+                        </Button>
+                      ) : null}
                     </HStack>
                   )}
                 </Td>
