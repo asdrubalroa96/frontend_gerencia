@@ -669,7 +669,7 @@ export default function CorrespondenceReceivedPage() {
         <Table size="sm" sx={{ tableLayout: 'fixed', minWidth: '980px' }}>
           <Thead>
             <Tr>
-              <Th title="La fila superior es la última recepción y lleva el número más alto del listado">N°</Th>
+              <Th title="Número de bandeja (secuencia): el más alto es la última recepción">N°</Th>
               <Th>Origen</Th>
               <Th>Fecha</Th>
               <Th>Remitente</Th>
@@ -684,7 +684,7 @@ export default function CorrespondenceReceivedPage() {
           <Tbody>
             {rows.map((r, i) => (
               <Tr key={rowKey(r)} bg={managementRowBg(r.management)}>
-                <Td>{rows.length - i}</Td>
+                <Td>{r.display_number ?? rows.length - i}</Td>
                 <Td>
                   <Badge colorScheme={r.entry_type === 'routed_memo' ? 'purple' : 'gray'} fontSize="0.65em">
                     {r.entry_type === 'routed_memo' ? 'Memo interno' : 'Exterior'}
