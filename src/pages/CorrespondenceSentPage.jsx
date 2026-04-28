@@ -547,14 +547,13 @@ export default function CorrespondenceSentPage() {
             sx={{ tableLayout: 'fixed' }}
           >
             <colgroup>
-              <col style={{ width: '6%' }} />
-              <col style={{ width: '9%' }} />
+              <col style={{ width: '7%' }} />
               <col style={{ width: '10%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '24%' }} />
+              <col style={{ width: '8%' }} />
               <col style={{ width: '14%' }} />
-              <col style={{ width: '20%' }} />
-              <col style={{ width: '12%' }} />
-              <col style={{ width: '6%' }} />
-              <col style={{ width: '13%' }} />
             </colgroup>
             <Thead>
               <Tr>
@@ -634,19 +633,6 @@ export default function CorrespondenceSentPage() {
                   px={2}
                   lineHeight="1.1"
                 >
-                  Asignado en destino
-                </Th>
-                <Th
-                  fontSize="xs"
-                  fontWeight="700"
-                  color="gray.700"
-                  textTransform="none"
-                  letterSpacing="normal"
-                  whiteSpace="nowrap"
-                  py={2}
-                  px={2}
-                  lineHeight="1.1"
-                >
                   PDF
                 </Th>
                 <Th
@@ -698,11 +684,6 @@ export default function CorrespondenceSentPage() {
                   <Td maxW={0} verticalAlign="middle" py={2} px={2} title={r.subject}>
                     <ChakraText noOfLines={1} fontSize="xs" lineHeight="short">
                       {r.subject}
-                    </ChakraText>
-                  </Td>
-                  <Td maxW={0} verticalAlign="middle" py={2} px={2} title={r.assigned_name || ''}>
-                    <ChakraText noOfLines={1} fontSize="xs" lineHeight="short">
-                      {r.assigned_name || '—'}
                     </ChakraText>
                   </Td>
                   <Td whiteSpace="nowrap" verticalAlign="middle" py={2} px={2}>

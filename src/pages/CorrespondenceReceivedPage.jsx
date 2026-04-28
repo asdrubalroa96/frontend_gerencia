@@ -27,7 +27,7 @@ import {
   useToast,
   VStack,
 } from '@chakra-ui/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import client from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import CorrespondenceStatsCharts from '../components/CorrespondenceStatsCharts.jsx';
@@ -66,6 +66,8 @@ export default function CorrespondenceReceivedPage() {
   const [rows, setRows] = useState([]);
   const [stats, setStats] = useState([]);
   const [catalog, setCatalog] = useState({ assignees: [], destinations: [], divisions: [] });
+  /** Usuarios asignables solo de la división receptora (independiente del catálogo global de `load`). */
+  const [recvModalAssignees, setRecvModalAssignees] = useState([]);
   const [routeTargetRow, setRouteTargetRow] = useState(null);
   const [routeDivisionId, setRouteDivisionId] = useState('');
   const [destinations, setDestinations] = useState([]);
@@ -76,7 +78,7 @@ export default function CorrespondenceReceivedPage() {
     sender: '',
   });
   /** all | pending | received — bandeja temporal (por recibir) hasta confirmar; luego recibidos. */
-  const [receiptTab, setReceiptTab] = useState('received');
+  const [receiptTab, setReceiptTab] = useState('pending');
   const [form, setForm] = useState({
     receivedDate: '',
     sender: '',
@@ -94,11 +96,6 @@ export default function CorrespondenceReceivedPage() {
     pdf: null,
   });
   const [editing, setEditing] = useState(null);
-  /** Evita cierre obsoleto en `load` async: si el modal está abierto, no pisar assignees con el catálogo global. */
-  const recvModalOpenRef = useRef(false);
-  useEffect(() => {
-    recvModalOpenRef.current = isOpen;
-  }, [isOpen]);
 
   /** Incluye el destino actual del memo aunque no salga en el catálogo de “envío” (p. ej. Despacho). */
   const routedDestinationOptions = useMemo(() => {
@@ -152,7 +149,7 @@ export default function CorrespondenceReceivedPage() {
   }, [editing, routedForm.destinationId, catalog.destinations, despachoDivisionId]);
 
   const assigneesForSelect = useMemo(() => {
-    const list = [...(catalog.assignees || [])];
+    const list = [...recvModalAssignees];
     const rawId =
       editing?.entry_type === 'routed_memo' ? routedForm.assignedUserId : form.assignedUserId;
     const sid = rawId != null && String(rawId).trim() !== '' ? String(rawId) : '';
@@ -163,21 +160,28 @@ export default function CorrespondenceReceivedPage() {
       });
     }
     return list;
-  }, [catalog.assignees, editing, form.assignedUserId, routedForm.assignedUserId]);
+  }, [recvModalAssignees, editing, form.assignedUserId, routedForm.assignedUserId]);
 
   useEffect(() => {
-    if (!isOpen || authLoading) return;
+    if (!isOpen) {
+      setRecvModalAssignees([]);
+      return;
+    }
+    if (authLoading) return;
     const id = assigneesDivisionIdResolved;
-    if (id == null || !Number.isFinite(id)) return;
+    if (id == null || !Number.isFinite(id)) {
+      setRecvModalAssignees([]);
+      return;
+    }
     let cancelled = false;
     client
       .get('/api/catalogs', { params: { assigneesDivisionId: id } })
       .then((res) => {
-        if (!cancelled) {
-          setCatalog((prev) => ({ ...prev, assignees: res.data.assignees || [] }));
-        }
+        if (!cancelled) setRecvModalAssignees(res.data.assignees || []);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setRecvModalAssignees([]);
+      });
     return () => {
       cancelled = true;
     };
@@ -209,20 +213,14 @@ export default function CorrespondenceReceivedPage() {
     ]);
     setRows(listRes.data);
     setStats(statsRes.data);
-    // No usar assignees del catálogo global: el API sin assigneesDivisionId devuelve todos los usuarios;
-    // los asignados por división solo se cargan al abrir el modal (useEffect + assigneesDivisionId).
-    setCatalog((prev) => ({
-      ...catRes.data,
-      assignees: recvModalOpenRef.current ? prev.assignees : [],
-    }));
+    setCatalog(catRes.data);
     setDestinations(destRes.data || []);
   };
 
   useEffect(() => {
     if (authLoading) return;
-    const tab = isDivisionOnly ? 'pending' : 'received';
-    setReceiptTab(tab);
-    load(undefined, tab).catch(() => {});
+    setReceiptTab('pending');
+    load(undefined, 'pending').catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, isDivisionOnly]);
 
@@ -511,7 +509,8 @@ export default function CorrespondenceReceivedPage() {
             <strong>Su división:</strong> {user?.divisionName || '—'}. Los <strong>memos internos</strong> nuevos entran en la{' '}
             <strong>bandeja temporal (por recibir)</strong> hasta que confirme la recepción; allí puede asignarlos a una persona
             de su división. Luego pasan a <strong>Recibidos</strong>. También verá el exterior que el Despacho haya asociado a su
-            unidad. El N° de bandeja es consecutivo por orden de registro. No puede dar de alta memos salientes aquí; use{' '}
+            unidad. El listado va del <strong>más antiguo al más reciente</strong>; la columna <strong>N°</strong> es 1, 2,
+            3… en ese orden. No puede dar de alta memos salientes aquí; use{' '}
             <strong>Correspondencia enviada</strong>.
           </ChakraText>
         </Box>
@@ -583,7 +582,7 @@ export default function CorrespondenceReceivedPage() {
       <CorrespondenceStatsCharts
         stats={chartStats}
         title="Gráficos — correspondencia recibida"
-        subtitle="Listado ordenado por registro en el sistema (orden de recepción), no por fecha de memo. Alta requiere PDF."
+        subtitle="Listado del más antiguo al más reciente; N° = 1, 2, 3… en ese orden. Alta de exterior requiere PDF."
       />
 
       {!isDivisionOnly && user?.role === 'admin' ? <CorrespondenceDivisionBars /> : null}
@@ -641,7 +640,7 @@ export default function CorrespondenceReceivedPage() {
         <Table size="sm" sx={{ tableLayout: 'fixed', minWidth: '980px' }}>
           <Thead>
             <Tr>
-              <Th>N°</Th>
+              <Th title="Orden de recepción en el sistema: 1 = más antiguo, el listado va hacia lo más reciente">N°</Th>
               <Th>Origen</Th>
               <Th>Fecha</Th>
               <Th>Remitente</Th>
@@ -654,9 +653,9 @@ export default function CorrespondenceReceivedPage() {
             </Tr>
           </Thead>
           <Tbody>
-            {rows.map((r) => (
+            {rows.map((r, i) => (
               <Tr key={rowKey(r)} bg={managementRowBg(r.management)}>
-                <Td>{r.display_number != null ? r.display_number : '—'}</Td>
+                <Td>{i + 1}</Td>
                 <Td>
                   <Badge colorScheme={r.entry_type === 'routed_memo' ? 'purple' : 'gray'} fontSize="0.65em">
                     {r.entry_type === 'routed_memo' ? 'Memo interno' : 'Exterior'}
