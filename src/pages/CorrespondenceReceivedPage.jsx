@@ -198,6 +198,18 @@ export default function CorrespondenceReceivedPage() {
     return Array.from(map.entries()).map(([management, total]) => ({ management, total }));
   }, [rows]);
 
+  /**
+   * Numeración de bandeja:
+   * - El backend suele devolver solo las últimas N (p. ej. 13).
+   * - Usamos `stats` para calcular el total del listado bajo filtros/pestaña,
+   *   así el ítem más reciente (arriba) muestra el número más alto (total).
+   */
+  const totalForNumbering = useMemo(() => {
+    const list = Array.isArray(stats) ? stats : [];
+    const total = list.reduce((acc, s) => acc + (Number(s?.total) || 0), 0);
+    return total > 0 ? total : 0;
+  }, [stats]);
+
   const load = async (overrideFilters, tabOverride) => {
     const f = overrideFilters ?? filters;
     const tab = tabOverride ?? receiptTab;
@@ -684,7 +696,7 @@ export default function CorrespondenceReceivedPage() {
           <Tbody>
             {rows.map((r, i) => (
               <Tr key={rowKey(r)} bg={managementRowBg(r.management)}>
-                <Td>{rows.length - i}</Td>
+                <Td>{(totalForNumbering || rows.length) - i}</Td>
                 <Td>
                   <Badge colorScheme={r.entry_type === 'routed_memo' ? 'purple' : 'gray'} fontSize="0.65em">
                     {r.entry_type === 'routed_memo' ? 'Memo interno' : 'Exterior'}
