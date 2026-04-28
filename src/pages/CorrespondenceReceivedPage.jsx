@@ -27,7 +27,7 @@ import {
   useToast,
   VStack,
 } from '@chakra-ui/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import client from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import CorrespondenceStatsCharts from '../components/CorrespondenceStatsCharts.jsx';
@@ -94,6 +94,11 @@ export default function CorrespondenceReceivedPage() {
     pdf: null,
   });
   const [editing, setEditing] = useState(null);
+  /** Evita cierre obsoleto en `load` async: si el modal está abierto, no pisar assignees con el catálogo global. */
+  const recvModalOpenRef = useRef(false);
+  useEffect(() => {
+    recvModalOpenRef.current = isOpen;
+  }, [isOpen]);
 
   /** Incluye el destino actual del memo aunque no salga en el catálogo de “envío” (p. ej. Despacho). */
   const routedDestinationOptions = useMemo(() => {
@@ -204,7 +209,12 @@ export default function CorrespondenceReceivedPage() {
     ]);
     setRows(listRes.data);
     setStats(statsRes.data);
-    setCatalog(catRes.data);
+    // No usar assignees del catálogo global: el API sin assigneesDivisionId devuelve todos los usuarios;
+    // los asignados por división solo se cargan al abrir el modal (useEffect + assigneesDivisionId).
+    setCatalog((prev) => ({
+      ...catRes.data,
+      assignees: recvModalOpenRef.current ? prev.assignees : [],
+    }));
     setDestinations(destRes.data || []);
   };
 
