@@ -5,7 +5,6 @@ import {
   FormControl,
   FormLabel,
   Heading,
-  HStack,
   Input,
   Modal,
   ModalBody,
@@ -54,6 +53,7 @@ export default function AdminUsersPage() {
   const [manageModalUser, setManageModalUser] = useState(null);
   const [manageRoleChoice, setManageRoleChoice] = useState('operador');
   const [manageActive, setManageActive] = useState(true);
+  const [manageDivisionId, setManageDivisionId] = useState('');
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [form, setForm] = useState({
@@ -64,8 +64,6 @@ export default function AdminUsersPage() {
     divisionId: '',
   });
   const [divisions, setDivisions] = useState([]);
-  /** Evita doble envío mientras PATCH /api/users/:id está en curso. */
-  const [busyUserId, setBusyUserId] = useState(null);
 
   const load = async () => {
     const [u, r, cat] = await Promise.all([
@@ -84,52 +82,12 @@ export default function AdminUsersPage() {
     await load();
   };
 
-  const setUserActive = async (u, nextActive) => {
-    if (!isAdmin || !u?.id) return;
-    if (u.id === authUser?.id && !nextActive) {
-      toast({ title: 'No puede desactivar su propia cuenta', status: 'warning' });
-      return;
-    }
-    if (Boolean(u.active) === Boolean(nextActive)) return;
-    setBusyUserId(u.id);
-    try {
-      await patchUser(u.id, { active: nextActive });
-    } catch (err) {
-      toast({
-        title: 'Error',
-        description: err.response?.data?.error || err.message,
-        status: 'error',
-      });
-    } finally {
-      setBusyUserId(null);
-    }
-  };
-
-  const setUserRoleCode = async (u, roleCode) => {
-    if (!isAdmin || !u?.id || u.id === authUser?.id) return;
-    if (u.role_code === 'admin') return;
-    const rc = String(roleCode || '').toLowerCase();
-    if (rc !== 'operador' && rc !== 'consulta') return;
-    if (String(u.role_code || '').toLowerCase() === rc) return;
-    setBusyUserId(u.id);
-    try {
-      await patchUser(u.id, { roleCode: rc });
-    } catch (err) {
-      toast({
-        title: 'Error',
-        description: err.response?.data?.error || err.message,
-        status: 'error',
-      });
-    } finally {
-      setBusyUserId(null);
-    }
-  };
-
   const openManageModal = (u) => {
     if (!isAdmin || !u?.id || u.id === authUser?.id) return;
     setManageModalUser(u);
     setManageRoleChoice(u.role_code === 'consulta' ? 'consulta' : 'operador');
     setManageActive(Boolean(u.active));
+    setManageDivisionId(u.division_id != null && u.division_id !== '' ? String(u.division_id) : '');
     onManageModalOpen();
   };
 
@@ -141,6 +99,15 @@ export default function AdminUsersPage() {
     }
     if (manageActive !== Boolean(manageModalUser.active)) {
       payload.active = manageActive;
+    }
+    const currentDivisionId =
+      manageModalUser.division_id != null && manageModalUser.division_id !== '' ? String(manageModalUser.division_id) : '';
+    if (manageDivisionId !== currentDivisionId) {
+      if (manageModalUser.role_code !== 'admin' && !manageDivisionId) {
+        toast({ title: 'Indique la división', status: 'warning' });
+        return;
+      }
+      payload.divisionId = manageDivisionId ? Number(manageDivisionId) : null;
     }
     if (!Object.keys(payload).length) {
       toast({ title: 'Sin cambios', status: 'info' });
@@ -199,11 +166,9 @@ export default function AdminUsersPage() {
         Usuarios y roles
       </Heading>
       <ChakraText fontSize="sm" color="gray.600" mb={4}>
-        En la tabla puede <strong>cambiar el rol</strong> (operador / consulta) con el desplegable y{' '}
-        <strong>activar o desactivar</strong> la cuenta con el interruptor. Un usuario inactivo no podrá iniciar sesión.
-        También puede usar <strong>Gestionar</strong> para el mismo ajuste en un panel. No puede desactivarse a sí mismo
-        ni cambiar su propio rol aquí. El rol <strong>administrador</strong> no se sustituye por otro desde esta pantalla;
-        sí puede desactivar o reactivar otras cuentas admin.
+        Para simplificar, las acciones de administración se realizan únicamente desde <strong>Gestionar</strong> (rol,
+        estado activo/inactivo y rotación de división). No puede desactivarse a sí mismo ni cambiar su propio rol desde
+        aquí. El rol <strong>administrador</strong> no se sustituye por otro desde esta pantalla.
       </ChakraText>
 
       <Box bg="white" p={4} borderRadius="md" boxShadow="sm" mb={6}>
@@ -277,26 +242,9 @@ export default function AdminUsersPage() {
                 <Td>{u.full_name}</Td>
                 <Td>
                   <VStack align="stretch" spacing={1}>
-                    {u.role_code === 'admin' ? (
-                      <Badge colorScheme="purple" w="fit-content">
-                        {roleLabel(u.role_code)}
-                      </Badge>
-                    ) : u.role_code === 'operador' || u.role_code === 'consulta' ? (
-                      <Select
-                        size="sm"
-                        maxW="240px"
-                        value={u.role_code === 'consulta' ? 'consulta' : 'operador'}
-                        isDisabled={!isAdmin || u.id === authUser?.id || busyUserId === u.id}
-                        onChange={(e) => setUserRoleCode(u, e.target.value)}
-                      >
-                        <option value="operador">Operador</option>
-                        <option value="consulta">Consulta</option>
-                      </Select>
-                    ) : (
-                      <Badge colorScheme="blue" w="fit-content">
-                        {roleLabel(u.role_code)}
-                      </Badge>
-                    )}
+                    <Badge colorScheme={u.role_code === 'admin' ? 'purple' : 'blue'} w="fit-content">
+                      {roleLabel(u.role_code)}
+                    </Badge>
                     {u.id === authUser?.id ? (
                       <ChakraText fontSize="xs" color="gray.500">
                         Su cuenta: no puede cambiar su rol aquí.
@@ -306,19 +254,9 @@ export default function AdminUsersPage() {
                 </Td>
                 <Td>{u.division_name || '—'}</Td>
                 <Td>
-                  {u.id === authUser?.id ? (
-                    <ChakraText fontSize="sm" color="gray.600">
-                      {u.active ? 'Activo' : 'Inactivo'} (su cuenta)
-                    </ChakraText>
-                  ) : (
-                    <Switch
-                      isChecked={Boolean(u.active)}
-                      isDisabled={!isAdmin || busyUserId === u.id}
-                      onChange={(e) => setUserActive(u, e.target.checked)}
-                      colorScheme="green"
-                      size="md"
-                    />
-                  )}
+                  <Badge colorScheme={u.active ? 'green' : 'gray'} variant="subtle">
+                    {u.active ? 'Activo' : 'Inactivo'}
+                  </Badge>
                 </Td>
                 <Td>
                   {isAdmin && u.id !== authUser?.id ? (
@@ -355,6 +293,24 @@ export default function AdminUsersPage() {
                 </Select>
               </FormControl>
             )}
+            <FormControl mb={4}>
+              <FormLabel>División</FormLabel>
+              <Select
+                placeholder={manageModalUser?.role_code === 'admin' ? 'Sin división (alcance global)' : 'Seleccione división'}
+                value={manageDivisionId}
+                onChange={(e) => setManageDivisionId(e.target.value)}
+              >
+                {manageModalUser?.role_code === 'admin' ? <option value="">Sin división (alcance global)</option> : null}
+                {divisions.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </Select>
+              <ChakraText fontSize="xs" color="gray.500" mt={1}>
+                Rotar a otra división aplica desde este panel de <strong>Administrador</strong>.
+              </ChakraText>
+            </FormControl>
             <FormControl display="flex" alignItems="center" justifyContent="space-between">
               <Box>
                 <FormLabel mb={0}>Cuenta activa</FormLabel>
