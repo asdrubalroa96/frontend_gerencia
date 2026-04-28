@@ -129,32 +129,19 @@ export default function CorrespondenceReceivedPage() {
     return null;
   }, [despachoDivisionId, user?.divisionId]);
 
-  /** División receptora del ítem: solo personal de esa división puede asignarse. */
+  /**
+   * División donde está la correspondencia (bandeja actual): ahí solo pueden asignarse usuarios de esa unidad.
+   * Prioriza siempre la fila recibida (derivada o memo), no el destino catálogo del memo.
+   */
   const assigneesDivisionIdResolved = useMemo(() => {
-    if (editing?.entry_type === 'routed_memo') {
-      const destId = Number(routedForm.destinationId);
-      if (Number.isFinite(destId) && destId > 0) {
-        const dest = (catalog.destinations || []).find((x) => Number(x.id) === destId);
-        if (dest) {
-          if (dest.division_id != null && Number.isFinite(Number(dest.division_id))) {
-            return Number(dest.division_id);
-          }
-          return despachoDivisionResolved;
-        }
-      }
+    if (editing) {
       if (editing.division_id != null && Number.isFinite(Number(editing.division_id))) {
         return Number(editing.division_id);
       }
       return despachoDivisionResolved;
     }
-    if (!editing) {
-      return despachoDivisionResolved;
-    }
-    if (editing.division_id != null && Number.isFinite(Number(editing.division_id))) {
-      return Number(editing.division_id);
-    }
     return despachoDivisionResolved;
-  }, [editing, routedForm.destinationId, catalog.destinations, despachoDivisionResolved]);
+  }, [editing, despachoDivisionResolved]);
 
   /** Asignar solo en bandeja principal (recepción ya validada). */
   const editingAllowsAssignee = useMemo(() => {
@@ -551,8 +538,8 @@ export default function CorrespondenceReceivedPage() {
             <strong>Su división:</strong> {user?.divisionName || '—'}. Los <strong>memos internos</strong> y el <strong>exterior</strong>{' '}
             asociado a su unidad entran primero en la <strong>bandeja temporal</strong> hasta que pulse <strong>Validar recepción</strong>.
             Luego pasan a la <strong>bandeja principal</strong>, donde podrá asignar solo a usuarios de {user?.divisionName || 'esta división'}.
-            El listado muestra <strong>primero la última recepción</strong>; la columna <strong>N°</strong> enumera
-            las filas (1 arriba). No puede dar de alta memos salientes aquí; use{' '}
+            El listado muestra <strong>primero la última recepción</strong>; el <strong>N°</strong> más alto corresponde a
+            esa última fila (arriba). No puede dar de alta memos salientes aquí; use{' '}
             <strong>Correspondencia enviada</strong>.
           </ChakraText>
         </Box>
@@ -624,7 +611,7 @@ export default function CorrespondenceReceivedPage() {
       <CorrespondenceStatsCharts
         stats={chartStats}
         title="Gráficos — correspondencia recibida"
-        subtitle="Última recepción arriba. N° = orden de fila (1 arriba). Alta de exterior requiere PDF."
+        subtitle="Última recepción arriba con el N° más alto. Alta de exterior requiere PDF."
       />
 
       {!isDivisionOnly && user?.role === 'admin' ? <CorrespondenceDivisionBars /> : null}
@@ -682,7 +669,7 @@ export default function CorrespondenceReceivedPage() {
         <Table size="sm" sx={{ tableLayout: 'fixed', minWidth: '980px' }}>
           <Thead>
             <Tr>
-              <Th title="Número de fila: 1 es la primera fila (la más reciente en la parte superior del listado)">N°</Th>
+              <Th title="La fila superior es la última recepción y lleva el número más alto del listado">N°</Th>
               <Th>Origen</Th>
               <Th>Fecha</Th>
               <Th>Remitente</Th>
@@ -697,7 +684,7 @@ export default function CorrespondenceReceivedPage() {
           <Tbody>
             {rows.map((r, i) => (
               <Tr key={rowKey(r)} bg={managementRowBg(r.management)}>
-                <Td>{i + 1}</Td>
+                <Td>{rows.length - i}</Td>
                 <Td>
                   <Badge colorScheme={r.entry_type === 'routed_memo' ? 'purple' : 'gray'} fontSize="0.65em">
                     {r.entry_type === 'routed_memo' ? 'Memo interno' : 'Exterior'}
