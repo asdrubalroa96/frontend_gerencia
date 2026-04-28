@@ -29,6 +29,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import SeniatBrandBlock from './SeniatBrandBlock.jsx';
 import { isEstándaresYAsistenciaTécnicaDivision } from '../utils/divisionUi.js';
 import { getApiBaseUrl } from '../utils/runtimeConfig.js';
+import { BUILD_STAMP } from '../buildStamp.js';
 
 const ADMIN_ITEMS = [
   { to: '/admin/plantillas', label: 'Plantillas Word', icon: '📄' },
@@ -325,6 +326,11 @@ export default function ShellLayout() {
                     ? ' · Despacho'
                     : ''}
               </ChakraText>
+              {import.meta.env.PROD ? (
+                <ChakraText fontSize="10px" color="gray.400" title="Commit o sello del build del frontend">
+                  Build: {BUILD_STAMP}
+                </ChakraText>
+              ) : null}
             </Box>
           </HStack>
           <HStack spacing={2} flexShrink={0}>
