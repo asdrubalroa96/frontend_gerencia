@@ -121,6 +121,14 @@ export default function CorrespondenceReceivedPage() {
     return d ? Number(d.id) : null;
   }, [catalog?.divisions]);
 
+  /** División Despacho en catálogo o, si falta, la división del usuario (p. ej. carga aún sin catálogo). */
+  const despachoDivisionResolved = useMemo(() => {
+    if (despachoDivisionId != null && Number.isFinite(despachoDivisionId)) return despachoDivisionId;
+    const uid = user?.divisionId;
+    if (uid != null && Number.isFinite(Number(uid))) return Number(uid);
+    return null;
+  }, [despachoDivisionId, user?.divisionId]);
+
   /** División receptora del ítem: solo personal de esa división puede asignarse. */
   const assigneesDivisionIdResolved = useMemo(() => {
     if (editing?.entry_type === 'routed_memo') {
@@ -131,22 +139,29 @@ export default function CorrespondenceReceivedPage() {
           if (dest.division_id != null && Number.isFinite(Number(dest.division_id))) {
             return Number(dest.division_id);
           }
-          return despachoDivisionId;
+          return despachoDivisionResolved;
         }
       }
       if (editing.division_id != null && Number.isFinite(Number(editing.division_id))) {
         return Number(editing.division_id);
       }
-      return despachoDivisionId;
+      return despachoDivisionResolved;
     }
     if (!editing) {
-      return despachoDivisionId;
+      return despachoDivisionResolved;
     }
     if (editing.division_id != null && Number.isFinite(Number(editing.division_id))) {
       return Number(editing.division_id);
     }
-    return despachoDivisionId;
-  }, [editing, routedForm.destinationId, catalog.destinations, despachoDivisionId]);
+    return despachoDivisionResolved;
+  }, [editing, routedForm.destinationId, catalog.destinations, despachoDivisionResolved]);
+
+  /** Asignar solo en bandeja principal (recepción ya validada). */
+  const editingAllowsAssignee = useMemo(() => {
+    if (!editing) return false;
+    if (editing.requires_receipt === true && !editing.acknowledged_at) return false;
+    return true;
+  }, [editing]);
 
   const assigneesForSelect = useMemo(() => {
     const list = [...recvModalAssignees];
@@ -316,7 +331,8 @@ export default function CorrespondenceReceivedPage() {
         fd.append('destinationId', routedForm.destinationId);
         fd.append('subject', routedForm.subject);
         fd.append('management', routedForm.management);
-        if (routedForm.assignedUserId) fd.append('assignedUserId', routedForm.assignedUserId);
+        if (editingAllowsAssignee && routedForm.assignedUserId)
+          fd.append('assignedUserId', routedForm.assignedUserId);
         if (routedForm.pdf) fd.append('pdf', routedForm.pdf);
         if (routedForm.pdf) {
           await client.patch(`/api/correspondence/sent/${editing.sent_id}`, fd, {
@@ -328,7 +344,7 @@ export default function CorrespondenceReceivedPage() {
             destinationId: Number(routedForm.destinationId),
             subject: routedForm.subject,
             management: routedForm.management,
-            assignedUserId: routedForm.assignedUserId || null,
+            ...(editingAllowsAssignee ? { assignedUserId: routedForm.assignedUserId || null } : {}),
           });
         }
         toast({ title: 'Memo actualizado', status: 'success' });
@@ -354,7 +370,8 @@ export default function CorrespondenceReceivedPage() {
         fd.append('sender', form.sender);
         fd.append('subject', form.subject);
         fd.append('management', form.management);
-        if (form.assignedUserId) fd.append('assignedUserId', form.assignedUserId);
+        if (editing && editingAllowsAssignee && form.assignedUserId)
+          fd.append('assignedUserId', form.assignedUserId);
         if (form.pdf) fd.append('pdf', form.pdf);
 
         if (!editing) {
@@ -373,12 +390,37 @@ export default function CorrespondenceReceivedPage() {
             sender: form.sender,
             subject: form.subject,
             management: form.management,
-            assignedUserId: form.assignedUserId || null,
+            ...(editingAllowsAssignee ? { assignedUserId: form.assignedUserId || null } : {}),
           });
           toast({ title: 'Registro actualizado', status: 'success' });
         }
       }
       onClose();
+      await load(undefined, receiptTab);
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err.response?.data?.error || err.message,
+        status: 'error',
+      });
+    }
+  };
+
+  const markExternalReceived = async (row) => {
+    if (row.entry_type !== 'external' || !row.received_id) return;
+    try {
+      const body = { receivedId: row.received_id };
+      if (user?.role === 'admin') {
+        body.inboxDivisionId =
+          row.division_id === null || row.division_id === undefined || row.division_id === ''
+            ? null
+            : Number(row.division_id);
+      }
+      const { data } = await client.post('/api/correspondence/received/acknowledge-external', body);
+      toast({
+        title: data.already ? 'Ya estaba recibida' : 'Recepción validada',
+        status: 'success',
+      });
       await load(undefined, receiptTab);
     } catch (err) {
       toast({
@@ -506,11 +548,11 @@ export default function CorrespondenceReceivedPage() {
       {isDivisionOnly ? (
         <Box mb={4} p={3} bg="blue.50" borderRadius="md" borderWidth="1px" borderColor="blue.100">
           <ChakraText fontSize="sm" color="gray.700">
-            <strong>Su división:</strong> {user?.divisionName || '—'}. Los <strong>memos internos</strong> nuevos entran en la{' '}
-            <strong>bandeja temporal (por recibir)</strong> hasta que confirme la recepción; allí puede asignarlos a una persona
-            de su división. Luego pasan a <strong>Recibidos</strong>. También verá el exterior que el Despacho haya asociado a su
-            unidad. El listado va del <strong>más antiguo al más reciente</strong>; la columna <strong>N°</strong> es 1, 2,
-            3… en ese orden. No puede dar de alta memos salientes aquí; use{' '}
+            <strong>Su división:</strong> {user?.divisionName || '—'}. Los <strong>memos internos</strong> y el <strong>exterior</strong>{' '}
+            asociado a su unidad entran primero en la <strong>bandeja temporal</strong> hasta que pulse <strong>Validar recepción</strong>.
+            Luego pasan a la <strong>bandeja principal</strong>, donde podrá asignar solo a usuarios de {user?.divisionName || 'esta división'}.
+            El listado muestra <strong>primero la última recepción</strong>; la columna <strong>N°</strong> enumera
+            las filas (1 arriba). No puede dar de alta memos salientes aquí; use{' '}
             <strong>Correspondencia enviada</strong>.
           </ChakraText>
         </Box>
@@ -522,15 +564,15 @@ export default function CorrespondenceReceivedPage() {
             use <strong>Derivar a división</strong> en la columna Asignado (una sola vez por registro); el ítem{' '}
             <strong>sigue visible aquí</strong> además de en la división. Los <strong>memos internos</strong> siguen
             gestionándose desde <strong>Correspondencia enviada</strong>. Los memos dirigidos al Despacho entran primero en la{' '}
-            <strong>bandeja temporal (por recibir)</strong> hasta confirmar recepción; use <strong>Recibidos</strong> para ver el
-            conjunto ya confirmado y el correo del exterior.
+            <strong>bandeja temporal</strong> hasta validar la recepción; luego el ítem pasa a la{' '}
+            <strong>bandeja principal</strong>, donde podrá asignarlo solo a usuarios del Despacho.
           </ChakraText>
         </Box>
       )}
 
       <HStack spacing={2} mb={4} flexWrap="wrap">
         <ChakraText fontSize="sm" fontWeight="600" w="100%">
-          Memos internos: bandeja temporal y recibidos
+          Bandeja temporal (validar recepción) y bandeja principal
         </ChakraText>
         <Button
           size="sm"
@@ -541,7 +583,7 @@ export default function CorrespondenceReceivedPage() {
             load(undefined, 'pending').catch(() => {});
           }}
         >
-          Bandeja temporal (por recibir)
+          Bandeja temporal
         </Button>
         <Button
           size="sm"
@@ -552,7 +594,7 @@ export default function CorrespondenceReceivedPage() {
             load(undefined, 'received').catch(() => {});
           }}
         >
-          Recibidos
+          Bandeja principal
         </Button>
         <Button
           size="sm"
@@ -582,7 +624,7 @@ export default function CorrespondenceReceivedPage() {
       <CorrespondenceStatsCharts
         stats={chartStats}
         title="Gráficos — correspondencia recibida"
-        subtitle="Listado del más antiguo al más reciente; N° = 1, 2, 3… en ese orden. Alta de exterior requiere PDF."
+        subtitle="Última recepción arriba. N° = orden de fila (1 arriba). Alta de exterior requiere PDF."
       />
 
       {!isDivisionOnly && user?.role === 'admin' ? <CorrespondenceDivisionBars /> : null}
@@ -640,7 +682,7 @@ export default function CorrespondenceReceivedPage() {
         <Table size="sm" sx={{ tableLayout: 'fixed', minWidth: '980px' }}>
           <Thead>
             <Tr>
-              <Th title="Orden de recepción en el sistema: 1 = más antiguo, el listado va hacia lo más reciente">N°</Th>
+              <Th title="Número de fila: 1 es la primera fila (la más reciente en la parte superior del listado)">N°</Th>
               <Th>Origen</Th>
               <Th>Fecha</Th>
               <Th>Remitente</Th>
@@ -731,7 +773,15 @@ export default function CorrespondenceReceivedPage() {
                         r.requires_receipt === true &&
                         !r.acknowledged_at && (
                           <Button size="xs" colorScheme="teal" variant="solid" onClick={() => markMemoReceived(r)}>
-                            Marcar como recibida
+                            Validar recepción
+                          </Button>
+                        )}
+                      {canWriteRecv &&
+                        r.entry_type === 'external' &&
+                        r.requires_receipt === true &&
+                        !r.acknowledged_at && (
+                          <Button size="xs" colorScheme="teal" variant="solid" onClick={() => markExternalReceived(r)}>
+                            Validar recepción
                           </Button>
                         )}
                       {canWriteRecv && r.management === 'por_gestionar' && (
@@ -825,20 +875,27 @@ export default function CorrespondenceReceivedPage() {
                     ))}
                   </Select>
                 </FormControl>
-                <FormControl>
-                  <FormLabel>Asignado</FormLabel>
-                  <Select
-                    placeholder="Sin asignar"
-                    value={routedForm.assignedUserId}
-                    onChange={(e) => setRoutedForm((f) => ({ ...f, assignedUserId: e.target.value }))}
-                  >
-                    {assigneesForSelect.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </Select>
-                </FormControl>
+                {editingAllowsAssignee ? (
+                  <FormControl>
+                    <FormLabel>Asignado</FormLabel>
+                    <Select
+                      placeholder="Sin asignar"
+                      value={routedForm.assignedUserId}
+                      onChange={(e) => setRoutedForm((f) => ({ ...f, assignedUserId: e.target.value }))}
+                    >
+                      {assigneesForSelect.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <ChakraText fontSize="sm" color="gray.600">
+                    Use <strong>Validar recepción</strong> en la bandeja temporal. En la bandeja principal podrá asignar
+                    solo a usuarios de la unidad receptora.
+                  </ChakraText>
+                )}
                 <FormControl isRequired>
                   <FormLabel>Adjunto PDF</FormLabel>
                   <Input
@@ -877,20 +934,32 @@ export default function CorrespondenceReceivedPage() {
                     ))}
                   </Select>
                 </FormControl>
-                <FormControl>
-                  <FormLabel>Asignado</FormLabel>
-                  <Select
-                    placeholder="Sin asignar"
-                    value={form.assignedUserId}
-                    onChange={(e) => setForm((f) => ({ ...f, assignedUserId: e.target.value }))}
-                  >
-                    {assigneesForSelect.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </Select>
-                </FormControl>
+                {!editing ? (
+                  <ChakraText fontSize="sm" color="gray.600">
+                    El registro quedará en la <strong>bandeja temporal</strong>. Cuando valide la recepción pasará a la{' '}
+                    <strong>bandeja principal</strong> y allí podrá asignarlo solo a usuarios del Despacho.
+                  </ChakraText>
+                ) : editingAllowsAssignee ? (
+                  <FormControl>
+                    <FormLabel>Asignado</FormLabel>
+                    <Select
+                      placeholder="Sin asignar"
+                      value={form.assignedUserId}
+                      onChange={(e) => setForm((f) => ({ ...f, assignedUserId: e.target.value }))}
+                    >
+                      {assigneesForSelect.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <ChakraText fontSize="sm" color="gray.600">
+                    Valide la recepción con <strong>Validar recepción</strong> en la bandeja temporal. Luego, en la bandeja
+                    principal, podrá asignar solo a usuarios de la unidad receptora.
+                  </ChakraText>
+                )}
                 <FormControl isRequired>
                   <FormLabel>Adjunto PDF</FormLabel>
                   <Input type="file" accept="application/pdf" onChange={(e) => setForm((f) => ({ ...f, pdf: e.target.files?.[0] || null }))} />

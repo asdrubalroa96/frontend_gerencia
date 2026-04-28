@@ -64,6 +64,8 @@ export default function AdminUsersPage() {
     divisionId: '',
   });
   const [divisions, setDivisions] = useState([]);
+  /** Evita doble envío mientras PATCH /api/users/:id está en curso. */
+  const [busyUserId, setBusyUserId] = useState(null);
 
   const load = async () => {
     const [u, r, cat] = await Promise.all([
@@ -80,6 +82,47 @@ export default function AdminUsersPage() {
     await client.patch(`/api/users/${id}`, payload);
     toast({ title: 'Cambios guardados', status: 'success' });
     await load();
+  };
+
+  const setUserActive = async (u, nextActive) => {
+    if (!isAdmin || !u?.id) return;
+    if (u.id === authUser?.id && !nextActive) {
+      toast({ title: 'No puede desactivar su propia cuenta', status: 'warning' });
+      return;
+    }
+    if (Boolean(u.active) === Boolean(nextActive)) return;
+    setBusyUserId(u.id);
+    try {
+      await patchUser(u.id, { active: nextActive });
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err.response?.data?.error || err.message,
+        status: 'error',
+      });
+    } finally {
+      setBusyUserId(null);
+    }
+  };
+
+  const setUserRoleCode = async (u, roleCode) => {
+    if (!isAdmin || !u?.id || u.id === authUser?.id) return;
+    if (u.role_code === 'admin') return;
+    const rc = String(roleCode || '').toLowerCase();
+    if (rc !== 'operador' && rc !== 'consulta') return;
+    if (String(u.role_code || '').toLowerCase() === rc) return;
+    setBusyUserId(u.id);
+    try {
+      await patchUser(u.id, { roleCode: rc });
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err.response?.data?.error || err.message,
+        status: 'error',
+      });
+    } finally {
+      setBusyUserId(null);
+    }
   };
 
   const openManageModal = (u) => {
@@ -156,10 +199,11 @@ export default function AdminUsersPage() {
         Usuarios y roles
       </Heading>
       <ChakraText fontSize="sm" color="gray.600" mb={4}>
-        Use <strong>Gestionar</strong> en cada fila para cambiar el rol (operador / consulta) y para{' '}
-        <strong>activar o inactivar</strong> la cuenta. Un usuario inactivo no podrá iniciar sesión. No puede gestionar su
-        propia fila desde aquí. El rol administrador no se cambia desde este formulario, pero sí puede inactivarse otra
-        cuenta admin si hace falta.
+        En la tabla puede <strong>cambiar el rol</strong> (operador / consulta) con el desplegable y{' '}
+        <strong>activar o desactivar</strong> la cuenta con el interruptor. Un usuario inactivo no podrá iniciar sesión.
+        También puede usar <strong>Gestionar</strong> para el mismo ajuste en un panel. No puede desactivarse a sí mismo
+        ni cambiar su propio rol aquí. El rol <strong>administrador</strong> no se sustituye por otro desde esta pantalla;
+        sí puede desactivar o reactivar otras cuentas admin.
       </ChakraText>
 
       <Box bg="white" p={4} borderRadius="md" boxShadow="sm" mb={6}>
@@ -223,6 +267,7 @@ export default function AdminUsersPage() {
               <Th textTransform="none">Rol</Th>
               <Th textTransform="none">División</Th>
               <Th textTransform="none">Activo</Th>
+              <Th textTransform="none">Acciones</Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -231,24 +276,56 @@ export default function AdminUsersPage() {
                 <Td>{u.email}</Td>
                 <Td>{u.full_name}</Td>
                 <Td>
-                  <HStack spacing={2} flexWrap="wrap">
-                    <Badge colorScheme={u.role_code === 'admin' ? 'purple' : u.role_code === 'consulta' ? 'cyan' : 'blue'}>
-                      {roleLabel(u.role_code)}
-                    </Badge>
-                    {isAdmin && u.id !== authUser?.id ? (
-                      <Button size="xs" variant="outline" colorScheme="brand" onClick={() => openManageModal(u)}>
-                        Gestionar
-                      </Button>
-                    ) : isAdmin && u.id === authUser?.id ? (
+                  <VStack align="stretch" spacing={1}>
+                    {u.role_code === 'admin' ? (
+                      <Badge colorScheme="purple" w="fit-content">
+                        {roleLabel(u.role_code)}
+                      </Badge>
+                    ) : u.role_code === 'operador' || u.role_code === 'consulta' ? (
+                      <Select
+                        size="sm"
+                        maxW="240px"
+                        value={u.role_code === 'consulta' ? 'consulta' : 'operador'}
+                        isDisabled={!isAdmin || u.id === authUser?.id || busyUserId === u.id}
+                        onChange={(e) => setUserRoleCode(u, e.target.value)}
+                      >
+                        <option value="operador">Operador</option>
+                        <option value="consulta">Consulta</option>
+                      </Select>
+                    ) : (
+                      <Badge colorScheme="blue" w="fit-content">
+                        {roleLabel(u.role_code)}
+                      </Badge>
+                    )}
+                    {u.id === authUser?.id ? (
                       <ChakraText fontSize="xs" color="gray.500">
-                        (su cuenta)
+                        Su cuenta: no puede cambiar su rol aquí.
                       </ChakraText>
                     ) : null}
-                  </HStack>
+                  </VStack>
                 </Td>
                 <Td>{u.division_name || '—'}</Td>
                 <Td>
-                  <ChakraText fontSize="sm">{u.active ? 'Sí' : 'No'}</ChakraText>
+                  {u.id === authUser?.id ? (
+                    <ChakraText fontSize="sm" color="gray.600">
+                      {u.active ? 'Activo' : 'Inactivo'} (su cuenta)
+                    </ChakraText>
+                  ) : (
+                    <Switch
+                      isChecked={Boolean(u.active)}
+                      isDisabled={!isAdmin || busyUserId === u.id}
+                      onChange={(e) => setUserActive(u, e.target.checked)}
+                      colorScheme="green"
+                      size="md"
+                    />
+                  )}
+                </Td>
+                <Td>
+                  {isAdmin && u.id !== authUser?.id ? (
+                    <Button size="xs" variant="outline" colorScheme="brand" onClick={() => openManageModal(u)}>
+                      Gestionar
+                    </Button>
+                  ) : null}
                 </Td>
               </Tr>
             ))}
